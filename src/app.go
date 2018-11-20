@@ -1,9 +1,12 @@
 package main
 
 import (
+	"encoding/json"
 	"fmt"
+	"io/ioutil"
 	"log"
-	"math/rand"
+	"net"
+	"net/http"
 	"time"
 
 	"github.com/influxdata/influxdb/client/v2"
@@ -12,15 +15,26 @@ import (
 )
 
 const (
-	influxdbURL = "http://adapter-scalar-influxdb.default.svc.cluster.local:8086"
-	database    = "wdias"
-	username    = "wdias"
-	password    = "wdias123"
+	influxdbURL   = "http://adapter-scalar-influxdb.default.svc.cluster.local:8086"
+	database      = "wdias"
+	username      = "wdias"
+	password      = "wdias123"
+	adapterScalar = "http://adapter-metadata.default.svc.cluster.local"
 )
 
-type Points []struct {
+type points []struct {
 	Time  string  `json:"time"`
 	Value float64 `json:"value"`
+}
+
+type timeseries struct {
+	TimeseriesID   string `json:"timeseriesId"`
+	ModuleID       string `json:"moduleId"`
+	ValueType      string `json:"valueType"`
+	ParameterID    string `json:"parameterId"`
+	LocationID     string `json:"locationId"`
+	TimeseriesType string `json:"timeseriesType"`
+	TimeStepID     string `json:"timeStepId"`
 }
 
 func queryDB(clnt client.Client, cmd string) (res []client.Result, err error) {
@@ -39,51 +53,72 @@ func queryDB(clnt client.Client, cmd string) (res []client.Result, err error) {
 	return res, nil
 }
 
-func writePoints(clnt client.Client) {
-	sampleSize := 1000
-
+func writePoints(clnt client.Client, timeseries timeseries, dataPoints *points) (err error) {
+	fmt.Println("writePoints:", timeseries, dataPoints)
 	bp, err := client.NewBatchPoints(client.BatchPointsConfig{
 		Database:  database,
 		Precision: "s",
 	})
 	if err != nil {
-		log.Fatal(err)
+		fmt.Println(err)
+		return err
 	}
 
-	rand.Seed(time.Now().UnixNano())
-	for i := 0; i < sampleSize; i++ {
-		regions := []string{"us-west1", "us-west2", "us-west3", "us-east1"}
+	for _, point := range *dataPoints {
 		tags := map[string]string{
-			"cpu":    "cpu-total",
-			"host":   fmt.Sprintf("host%d", rand.Intn(1000)),
-			"region": regions[rand.Intn(len(regions))],
+			"timeseriesId":   timeseries.TimeseriesID,
+			"moduleId":       timeseries.ModuleID,
+			"valueType":      timeseries.ValueType,
+			"parameterId":    timeseries.ParameterID,
+			"locationId":     timeseries.LocationID,
+			"timeseriesType": timeseries.TimeseriesType,
+			"timeStepId":     timeseries.TimeStepID,
 		}
-
-		idle := rand.Float64() * 100.0
 		fields := map[string]interface{}{
-			"idle": idle,
-			"busy": 100.0 - idle,
+			"value": point.Value,
 		}
-
+		t, err := time.Parse(time.RFC3339, point.Time)
+		if err != nil {
+			fmt.Println("Error: Parsing time with:", point.Time, err)
+			continue
+		}
 		pt, err := client.NewPoint(
-			"cpu_usage",
+			timeseries.TimeseriesType, // measurement
 			tags,
 			fields,
-			time.Now(),
+			t,
 		)
 		if err != nil {
-			log.Fatal(err)
+			fmt.Println(err)
+			continue
 		}
 		bp.AddPoint(pt)
 	}
 
+	fmt.Println("wirting to influx")
 	if err := clnt.Write(bp); err != nil {
-		log.Fatal(err)
+		fmt.Println(err)
+		return err
 	}
+	return nil
+}
+
+var tr = &http.Transport{
+	MaxIdleConns:       10,
+	IdleConnTimeout:    30 * time.Second,
+	DisableCompression: true,
+	Dial: (&net.Dialer{
+		Timeout: 5 * time.Second,
+	}).Dial,
+	TLSHandshakeTimeout: 5 * time.Second,
+}
+var netClient = &http.Client{
+	Transport: tr,
+	Timeout:   time.Second * 10,
 }
 
 func main() {
-	c, err := client.NewHTTPClient(client.HTTPConfig{
+	influxClient, err := client.NewHTTPClient(client.HTTPConfig{
 		Addr: influxdbURL,
 		// Username: username,
 		// Password: password,
@@ -91,18 +126,48 @@ func main() {
 	if err != nil {
 		log.Fatal(err)
 	}
-	defer c.Close()
+	defer influxClient.Close()
+	q := client.Query{
+		Command:  fmt.Sprintf("CREATE DATABASE %s", database),
+		Database: database,
+	}
+	if response, err := influxClient.Query(q); err == nil {
+		if response.Error() != nil {
+			log.Fatal(response.Error())
+		}
+		fmt.Println("Connected to the database:", database)
+	}
 
 	app := iris.Default()
 
-	app.Post("/timeseries", func(ctx iris.Context) {
-		points := &Points{}
-		err := ctx.ReadJSON(points)
+	app.Post("/timeseries/{timeseriesID:string}", func(ctx iris.Context) {
+		timeseriesID := ctx.Params().Get("timeseriesID")
+		dataPoints := &points{}
+		err := ctx.ReadJSON(dataPoints)
 		if err != nil {
 			ctx.JSON(context.Map{"response": err.Error()})
 		} else {
-			fmt.Println("Successfully inserted into database")
-			ctx.JSON(context.Map{"response": "User succesfully created", "message": points})
+			fmt.Println("timeseriesID:", timeseriesID, dataPoints)
+			fmt.Println("URL:", fmt.Sprint(adapterScalar, "/timeseries/", timeseriesID))
+			response, err := netClient.Get(fmt.Sprint(adapterScalar, "/timeseries/", timeseriesID))
+			if err != nil {
+				ctx.JSON(context.Map{"response": err.Error()})
+			}
+			defer response.Body.Close()
+			body, err := ioutil.ReadAll(response.Body)
+			if err != nil {
+				ctx.JSON(context.Map{"response": err.Error()})
+			}
+			var data timeseries
+			err = json.Unmarshal(body, &data)
+			if err != nil {
+				ctx.JSON(context.Map{"response": err.Error()})
+			}
+			if err := writePoints(influxClient, data, dataPoints); err != nil {
+				ctx.JSON(context.Map{"response": err.Error()})
+			}
+			fmt.Println("Stored timeseries:", data)
+			ctx.JSON(context.Map{"response": "Stored data points", "timeseries": data})
 		}
 	})
 
