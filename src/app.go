@@ -22,7 +22,7 @@ const (
 	adapterScalar = "http://adapter-metadata.default.svc.cluster.local"
 )
 
-type points []struct {
+type point struct {
 	Time  string  `json:"time"`
 	Value float64 `json:"value"`
 }
@@ -69,7 +69,7 @@ func readPoints(clnt client.Client, cmd string) (res []client.Result, err error)
 	return res, nil
 }
 
-func writePoints(clnt client.Client, timeseries timeseries, dataPoints *points) (err error) {
+func writePoints(clnt client.Client, timeseries timeseries, dataPoints *[]point) (err error) {
 	fmt.Println("writePoints:", timeseries, dataPoints)
 	bp, err := client.NewBatchPoints(client.BatchPointsConfig{
 		Database:  database,
@@ -158,7 +158,7 @@ func main() {
 
 	app.Post("/timeseries/{timeseriesID:string}", func(ctx iris.Context) {
 		timeseriesID := ctx.Params().Get("timeseriesID")
-		dataPoints := &points{}
+		dataPoints := &[]point{}
 		err := ctx.ReadJSON(dataPoints)
 		if err != nil {
 			ctx.JSON(context.Map{"response": err.Error()})
@@ -180,8 +180,39 @@ func main() {
 	app.Get("/timeseries/{timeseriesID:string}", func(ctx iris.Context) {
 		timeseriesID := ctx.Params().Get("timeseriesID")
 		fmt.Println("timeseriesID:", timeseriesID)
-		fmt.Println("Retrieve timeseries:")
-		ctx.JSON(context.Map{"response": "Retrieve data points"})
+		var metadata timeseries
+		err = getTimeseries(timeseriesID, &metadata)
+		if err != nil {
+			ctx.JSON(context.Map{"response": err.Error()})
+		}
+		fmt.Println("Retrieve timeseries:", metadata)
+		q := fmt.Sprintf("SELECT time, value FROM %s LIMIT %d", metadata.TimeseriesType, 10)
+		res, err := readPoints(influxClient, q)
+		if err != nil {
+			ctx.JSON(context.Map{"response": err.Error()})
+		}
+
+		var dataPoints []point
+		fmt.Println(res)
+		fmt.Println(res[0].Series[0])
+		fmt.Println(res[0].Series[0].Columns)
+		for _, row := range res[0].Series[0].Values {
+			// t, err := time.Parse(time.RFC3339, row[0].(string))
+			// if err != nil {
+			// 	fmt.Println("Error: Parsing back time:", err)
+			// }
+			t := row[0].(string)
+			val, err := row[1].(json.Number).Float64()
+			if err != nil {
+				fmt.Println("Error: Parsing value:", val, err)
+			}
+			p := point{
+				Time:  t,
+				Value: val,
+			}
+			dataPoints = append(dataPoints, p)
+		}
+		ctx.JSON(dataPoints)
 	})
 
 	app.Get("/hc", func(ctx iris.Context) {
