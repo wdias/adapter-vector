@@ -37,7 +37,23 @@ type timeseries struct {
 	TimeStepID     string `json:"timeStepId"`
 }
 
-func queryDB(clnt client.Client, cmd string) (res []client.Result, err error) {
+func getTimeseries(timeseriesID string, metadata *timeseries) error {
+	fmt.Println("timeseriesID:", timeseriesID)
+	fmt.Println("URL:", fmt.Sprint(adapterScalar, "/timeseries/", timeseriesID))
+	response, err := netClient.Get(fmt.Sprint(adapterScalar, "/timeseries/", timeseriesID))
+	if err != nil {
+		return err
+	}
+	defer response.Body.Close()
+	body, err := ioutil.ReadAll(response.Body)
+	if err != nil {
+		return err
+	}
+	err = json.Unmarshal(body, &metadata)
+	return err
+}
+
+func readPoints(clnt client.Client, cmd string) (res []client.Result, err error) {
 	q := client.Query{
 		Command:  cmd,
 		Database: database,
@@ -148,27 +164,24 @@ func main() {
 			ctx.JSON(context.Map{"response": err.Error()})
 		} else {
 			fmt.Println("timeseriesID:", timeseriesID, dataPoints)
-			fmt.Println("URL:", fmt.Sprint(adapterScalar, "/timeseries/", timeseriesID))
-			response, err := netClient.Get(fmt.Sprint(adapterScalar, "/timeseries/", timeseriesID))
+			var metadata timeseries
+			err = getTimeseries(timeseriesID, &metadata)
 			if err != nil {
 				ctx.JSON(context.Map{"response": err.Error()})
 			}
-			defer response.Body.Close()
-			body, err := ioutil.ReadAll(response.Body)
-			if err != nil {
+			if err := writePoints(influxClient, metadata, dataPoints); err != nil {
 				ctx.JSON(context.Map{"response": err.Error()})
 			}
-			var data timeseries
-			err = json.Unmarshal(body, &data)
-			if err != nil {
-				ctx.JSON(context.Map{"response": err.Error()})
-			}
-			if err := writePoints(influxClient, data, dataPoints); err != nil {
-				ctx.JSON(context.Map{"response": err.Error()})
-			}
-			fmt.Println("Stored timeseries:", data)
-			ctx.JSON(context.Map{"response": "Stored data points", "timeseries": data})
+			fmt.Println("Stored timeseries:", metadata)
+			ctx.JSON(context.Map{"response": "Stored data points", "timeseries": metadata})
 		}
+	})
+
+	app.Get("/timeseries/{timeseriesID:string}", func(ctx iris.Context) {
+		timeseriesID := ctx.Params().Get("timeseriesID")
+		fmt.Println("timeseriesID:", timeseriesID)
+		fmt.Println("Retrieve timeseries:")
+		ctx.JSON(context.Map{"response": "Retrieve data points"})
 	})
 
 	app.Get("/hc", func(ctx iris.Context) {
