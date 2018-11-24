@@ -38,7 +38,6 @@ type timeseries struct {
 }
 
 func getTimeseries(timeseriesID string, metadata *timeseries) error {
-	fmt.Println("timeseriesID:", timeseriesID)
 	fmt.Println("URL:", fmt.Sprint(adapterScalar, "/timeseries/", timeseriesID))
 	response, err := netClient.Get(fmt.Sprint(adapterScalar, "/timeseries/", timeseriesID))
 	if err != nil {
@@ -191,11 +190,7 @@ func main() {
 		if err != nil {
 			ctx.JSON(context.Map{"response": err.Error()})
 		}
-
 		var dataPoints []point
-		fmt.Println(res)
-		fmt.Println(res[0].Series[0])
-		fmt.Println(res[0].Series[0].Columns)
 		for _, row := range res[0].Series[0].Values {
 			// t, err := time.Parse(time.RFC3339, row[0].(string))
 			// if err != nil {
