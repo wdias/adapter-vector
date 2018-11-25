@@ -15,11 +15,11 @@ import (
 )
 
 const (
-	influxdbURL   = "http://adapter-scalar-influxdb.default.svc.cluster.local:8086"
-	database      = "wdias"
-	username      = "wdias"
-	password      = "wdias123"
-	adapterScalar = "http://adapter-metadata.default.svc.cluster.local"
+	influxdbURL     = "http://adapter-scalar-influxdb.default.svc.cluster.local:8086"
+	database        = "wdias"
+	username        = "wdias"
+	password        = "wdias123"
+	adapterMetadata = "http://adapter-metadata.default.svc.cluster.local"
 )
 
 type point struct {
@@ -38,8 +38,8 @@ type timeseries struct {
 }
 
 func getTimeseries(timeseriesID string, metadata *timeseries) error {
-	fmt.Println("URL:", fmt.Sprint(adapterScalar, "/timeseries/", timeseriesID))
-	response, err := netClient.Get(fmt.Sprint(adapterScalar, "/timeseries/", timeseriesID))
+	fmt.Println("URL:", fmt.Sprint(adapterMetadata, "/timeseries/", timeseriesID))
+	response, err := netClient.Get(fmt.Sprint(adapterMetadata, "/timeseries/", timeseriesID))
 	if err != nil {
 		return err
 	}
