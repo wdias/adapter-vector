@@ -180,7 +180,7 @@ func main() {
 		timeseriesID := ctx.Params().Get("timeseriesID")
 		fmt.Println("timeseriesID:", timeseriesID)
 		var metadata timeseries
-		err = getTimeseries(timeseriesID, &metadata)
+		err := getTimeseries(timeseriesID, &metadata)
 		if err != nil {
 			ctx.JSON(context.Map{"response": err.Error()})
 		}
@@ -210,7 +210,7 @@ func main() {
 		ctx.JSON(dataPoints)
 	})
 
-	app.Get("/hc", func(ctx iris.Context) {
+	app.Get("/public/hc", func(ctx iris.Context) {
 		ctx.JSON(iris.Map{
 			"message": "OK",
 		})
