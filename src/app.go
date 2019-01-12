@@ -9,7 +9,7 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/influxdata/influxdb/client/v2"
+	"github.com/influxdata/influxdb1-client/v2"
 	"github.com/kataras/iris"
 	"github.com/kataras/iris/context"
 )
@@ -22,11 +22,13 @@ const (
 	adapterMetadata = "http://adapter-metadata.default.svc.cluster.local"
 )
 
+// Point : Data Point
 type point struct {
 	Time  string  `json:"time"`
 	Value float64 `json:"value"`
 }
 
+// Timeseries : Timeseries
 type timeseries struct {
 	TimeseriesID   string `json:"timeseriesId"`
 	ModuleID       string `json:"moduleId"`
