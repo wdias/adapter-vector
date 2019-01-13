@@ -71,7 +71,7 @@ func readPoints(clnt client.Client, cmd string) (res []client.Result, err error)
 }
 
 func writePoints(clnt client.Client, timeseries timeseries, dataPoints *[]point) (err error) {
-	fmt.Println("writePoints:", timeseries, dataPoints)
+	fmt.Println("writePoints:", timeseries.TimeseriesID)
 	bp, err := client.NewBatchPoints(client.BatchPointsConfig{
 		Database:  database,
 		Precision: "s",
@@ -164,11 +164,15 @@ func main() {
 		if err != nil {
 			ctx.JSON(context.Map{"response": err.Error()})
 		} else {
-			fmt.Println("timeseriesID:", timeseriesID, dataPoints)
+			fmt.Println("timeseriesID:", timeseriesID)
 			var metadata timeseries
 			err = getTimeseries(timeseriesID, &metadata)
 			if err != nil {
 				ctx.JSON(context.Map{"response": err.Error()})
+			}
+			if metadata.TimeseriesID != timeseriesID {
+				ctx.JSON(context.Map{"response": "Unable to find timeseries"})
+                return
 			}
 			if err := writePoints(influxClient, metadata, dataPoints); err != nil {
 				ctx.JSON(context.Map{"response": err.Error()})
