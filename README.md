@@ -1,2 +1,2 @@
-# adapter-scalar
-Scalar Adapter microservice of WDIAS
+# adapter-vector
+Vector Adapter microservice of WDIAS
