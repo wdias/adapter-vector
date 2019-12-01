@@ -172,7 +172,7 @@ func main() {
 			}
 			if metadata.TimeseriesID != timeseriesID {
 				ctx.JSON(context.Map{"response": "Unable to find timeseries"})
-                return
+                		return
 			}
 			if err := writePoints(influxClient, metadata, dataPoints); err != nil {
 				ctx.JSON(context.Map{"response": err.Error()})
